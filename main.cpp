@@ -5,7 +5,8 @@
 using namespace std;
 
 // since there was a constraint of using only a single file, here are the order of functions:
-// struct declerations and their constructor/destructor, 
+// struct declerations and their constructor/destructor
+// after all of this comes struct function blocks
 
 struct Tops {
     int * stats; // holds max_points, max_assists, max_rebounds
@@ -62,6 +63,10 @@ struct RBT {
     struct Node* find(string full_name); // traverses tree and finds
     void insert(struct Node* newnode, Tops* maxes); // traverses tree and inserts or updates
     void print(string current_season, Tops* maxes, ofstream& outfile); // prints seasonal data
+
+    void left_rotate(struct Node* newnode); // left rotation
+    void right_rotate(struct Node* newnode); // right rotation
+    void fix_tree(struct Node* newnode); // configures tree after new insertion to comply with RBT rules
     void print_rec(string current_season, struct Node* node, int height, ofstream& outfile); // prints red-black tree's nodes that have latest season 
     void remove_all(struct Node* node); // recursively removes all nodes
 };
@@ -99,6 +104,7 @@ void RBT::remove_all(struct Node* node) {
 
 void RBT::insert(struct Node* newnode, Tops* maxes) {
     // traverses tree and inserts or updates
+    // does BST insertion and then fixes it to RBT
     if (this->head == NULL) {
         // insert as root
         head = newnode;
@@ -139,17 +145,18 @@ void RBT::insert(struct Node* newnode, Tops* maxes) {
         tail->left = newnode;
         newnode->parent = tail;
     }
-    else if (comparison > 1) {
+    else if (comparison > 0) {
         // add as right child of a node
         tail->right = newnode;
         newnode->parent = tail;
     }
+    this->fix_tree(newnode);
     maxes->checkTops(newnode);
     return;
 }
 
 void RBT::print(string current_season, Tops* maxes, ofstream& outfile) {
-    // prints seasonal data and player full names
+    // prints updated all time stats and player full names
     outfile << "End of the " << current_season << " Season" << '\n';
     outfile << "Max Points " << maxes->stats[0] << " - Player Name: " << maxes->holders[0] << '\n';
     outfile << "Max Assists " << maxes->stats[1] << " - Player Name: " << maxes->holders[1] << '\n';
@@ -158,28 +165,160 @@ void RBT::print(string current_season, Tops* maxes, ofstream& outfile) {
 }
 
 void RBT::print_rec(string current_season, struct Node* node, int height, ofstream& outfile) {
-    // prints red-black tree's nodes that have latest season 
+    // prints red-black tree's all nodes
     if (node == NULL) {
         return;
     }
-    if (node->season.compare(current_season) == 0) {
-        for (int i = 0; i < height; i++) {
-            outfile << "-";
-        }
-        outfile << "(" << node->color << ") " << node->full_name << '\n';
+    for (int i = 0; i < height; i++) {
+        outfile << "-";
     }
+    outfile << "(" << node->color << ") " << node->full_name << '\n';
+    
     print_rec(current_season, node->left, height+1, outfile); // traverse left node
     print_rec(current_season, node->right, height+1, outfile); // traverse right noded
 }
 
+void RBT::fix_tree(struct Node * newnode) {
+    // turns BST into RBT
 
+    struct Node * parent = NULL;
+    struct Node * grandparent = NULL;
+    struct Node * sibling_of_parent = NULL; // other child of grandparent
+
+    // while there is a contradiction or we did not reach root node
+    if(newnode != this->head &&
+        newnode->parent->color.compare("RED") == 0 &&
+        newnode->color.compare("RED") == 0 )
+    {
+        grandparent = newnode->parent->parent;
+        parent = newnode->parent;
+        
+        if (grandparent != NULL && parent == grandparent->left) {
+            // parent of new node is left child of grandparent
+            sibling_of_parent = grandparent->right;
+
+            if (sibling_of_parent != NULL && sibling_of_parent->color.compare("RED") == 0) {
+                // The sibling of parent of new node is also red
+                // recoloring
+                grandparent->color = "RED";
+                sibling_of_parent->color = "BLACK";
+                parent->color = "BLACK";
+                newnode = grandparent;
+            } else {
+                // either sibling of parent is NULL or it is BLACK
+                if (newnode == parent->right) {
+                    // new node is right child of its parent
+                    // do left then right rotation
+                    this->left_rotate(parent);
+                    newnode = parent;
+                    parent = newnode->parent;
+                    
+                    this->right_rotate(grandparent); 
+                    parent->color = "BLACK";
+                    grandparent->color = "RED";
+                    newnode = parent;
+                    
+                } else if (newnode == parent->left) {
+                    // new node is left child of its parent
+                    // do the right rotation
+                    this->right_rotate(grandparent);
+                    parent->color = "BLACK";
+                    grandparent->color = "RED";
+                    newnode = parent;
+                }
+            }
+        } else if (grandparent != NULL) {
+            // parent of new node is right child of grandparent
+            sibling_of_parent = grandparent->left;
+
+            if (sibling_of_parent != NULL && sibling_of_parent->color.compare("RED") == 0)  
+            { 
+                // The sibling of parent of new node is also red
+                // recoloring
+                grandparent->color = "RED";
+                sibling_of_parent->color = "BLACK";
+                parent->color = "BLACK";
+                newnode = grandparent;
+            } 
+            else { 
+                // either sibling of parent is NULL or it is BLACK
+                if (newnode == parent->left) { 
+                    // new node is left child of its parent
+                    // do right then left rotation
+                    this->right_rotate(parent); 
+                    newnode = parent; 
+                    parent = newnode->parent; 
+                    
+                    this->left_rotate(grandparent); 
+                    parent->color = "BLACK";
+                    grandparent->color = "RED";
+                    newnode = parent;
+                } else if (newnode == parent->right) {
+                    // do left rotation
+                    this->left_rotate(grandparent); 
+                    parent->color = "BLACK";
+                    grandparent->color = "RED";
+                    newnode = parent;
+                }
+            }
+        }
+        this->head->color = "BLACK";
+        fix_tree(newnode);
+    }
+}
+
+void RBT::left_rotate(struct Node* newnode) {
+    // do left rotation
+    struct Node* right = newnode->right;
+    newnode->right = newnode->right->left;
+
+    if (newnode->right != NULL) {
+        newnode->right->parent = newnode;
+    }
+    right->parent = newnode->parent;
+
+    // fix parent's relationship
+    if (newnode->parent == NULL) {
+        this->head = right;
+    } else if (newnode == newnode->parent->right) {
+        newnode->parent->right = right;
+    } else if (newnode == newnode->parent->left) {
+        newnode->parent->left = right;
+    }
+
+    right->left = newnode;
+    newnode->parent = right;
+}
+
+void RBT::right_rotate(struct Node* newnode) {
+    // do right rotation
+    struct Node* left = newnode->left;
+    newnode->left = newnode->left->right; 
+
+    if (newnode->left != NULL) {
+        newnode->left->parent = newnode;
+    }
+    left->parent = newnode->parent;
+
+    // fix parent's relationship
+    if (newnode->parent == NULL) {
+        this->head = left; 
+    } else if (newnode == newnode->parent->right) {
+        newnode->parent->right = left; 
+    } else if (newnode == newnode->parent->left) {
+        newnode->parent->left = left; 
+    }
+
+    left->right = newnode; 
+    newnode->parent = left;
+}
 
 int main(int argc, char** argv) {
 
     string file_name;
 
     if (argc > 1) {
-        file_name = argv[1]; // get number N from console argument (./a.out N)
+        file_name = argv[1]; // get file name from console argument (./a.out file_name)
     }
     else {
         file_name = "euroleague.csv";
